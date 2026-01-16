@@ -22,6 +22,13 @@ namespace Internal.Core
             
             // Ensure proper name for debugging
             gameObject.name = $"Block_{row}_{col}";
+            
+            // Fix visual overlap: Lower blocks (smaller Y) should be rendered in FRONT (higher order)
+            // Multiplying Y by -10 ensures that. Ex: Y=5 -> Order=-50, Y=0 -> Order=0.
+            if (_renderer != null)
+            {
+                _renderer.sortingOrder = (int)(transform.position.y * 10);
+            }
         }
 
         public void UpdateVisual(Sprite newSprite)
@@ -35,6 +42,11 @@ namespace Internal.Core
             Col = col;
             // TODO: Add interpolation/animation
             transform.position = worldPosition;
+            
+             if (_renderer != null)
+            {
+                _renderer.sortingOrder = (int)(worldPosition.y * 10);
+            }
         }
     }
 }

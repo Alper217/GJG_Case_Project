@@ -15,23 +15,42 @@ public class GameUI : MonoBehaviour
     [SerializeField] private TMP_InputField _inputB;
     [SerializeField] private TMP_InputField _inputC;
     
-    [SerializeField] private Button _restartButton;
+    [SerializeField] private Button _updateButton;
 
     [Header("Preset Buttons")]
     [SerializeField] private Button _easyButton;
     [SerializeField] private Button _mediumButton;
     [SerializeField] private Button _hardButton;
 
+    [Header("Panel Controls")]
+    [SerializeField] private GameObject _inputPanel;
+    [SerializeField] private Button _openPanelButton;
+    [SerializeField] private Button _closePanelButton;
+
     private void Start()
     {
-        _restartButton.onClick.AddListener(OnRestartClicked);
+        _updateButton.onClick.AddListener(OnRestartClicked);
         
         if (_easyButton != null) _easyButton.onClick.AddListener(() => ApplyPreset(8, 6, 3, 3, 5, 7));
         if (_mediumButton != null) _mediumButton.onClick.AddListener(() => ApplyPreset(10, 8, 5, 4, 7, 9));
         if (_hardButton != null) _hardButton.onClick.AddListener(() => ApplyPreset(12, 9, 6, 5, 8, 10));
 
+        // Panel Logic
+        if (_openPanelButton != null) _openPanelButton.onClick.AddListener(() => SetPanelState(true));
+        if (_closePanelButton != null) _closePanelButton.onClick.AddListener(() => SetPanelState(false));
+
+        // Start with panel closed (optional, keeps UI clean)
+        SetPanelState(false);
+
         // Concise defaults (Normal)
         ApplyPreset(10, 8, 6, 4, 7, 9, false);
+    }
+
+    private void SetPanelState(bool isOpen)
+    {
+        if (_inputPanel != null) _inputPanel.SetActive(isOpen);
+        if (_openPanelButton != null) _openPanelButton.gameObject.SetActive(!isOpen); // Hide open button when panel is open
+        if (_closePanelButton != null) _closePanelButton.gameObject.SetActive(isOpen); // Show close button only when panel is open
     }
 
     private void ApplyPreset(int m, int n, int k, int a, int b, int c, bool autoRestart = true)

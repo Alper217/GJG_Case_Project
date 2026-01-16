@@ -1,9 +1,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Internal.Core;
+using TMPro;
 
 public class BoardController : MonoBehaviour
 {
+    [Header("Score")]
+    [SerializeField] private int _currentScore = 0;
+    [SerializeField] private TextMeshProUGUI _scoreText;
     [Header("Board Config")]
     [SerializeField] private int _rows = 10; // M
     [SerializeField] private int _cols = 8;  // N
@@ -12,6 +16,8 @@ public class BoardController : MonoBehaviour
     [Header("Visuals")]
     [SerializeField] private Block _blockPrefab;
     [SerializeField] private Transform _boardContainer;
+    [SerializeField] private SpriteRenderer _boardBackground; // The yellow frame
+    [SerializeField] private float _backgroundPadding = 0.5f; // Extra space around blocks
     
     // Config for icons
     // We will load these from Resources or assign in inspector
@@ -40,40 +46,26 @@ public class BoardController : MonoBehaviour
     // We might need a separate logical grid if we want pure data separation, 
     // but for this scale, Block component holding data is acceptable if optimized.
     // Optimization: 'Block' is a MonoBehaviour.
-    
+   
     private void Start()
     {
         InitializeBoard();
     }
 
-    public void RestartBoard(int m, int n, int k, int a, int b, int c)
-    {
-        _rows = m;
-        _cols = n;
-        _colorCount = k;
-        _thresholdA = a;
-        _thresholdB = b;
-        _thresholdC = c;
-
-        // Clear existing board
-        if (_grid != null)
-        {
-            foreach (var block in _grid)
-            {
-                if (block != null) _blockPool.Return(block);
-            }
-        }
-        
-        _grid = new Block[_rows, _cols];
-        
-        // Re-center camera or board container if needed? 
-        // For now just regenerate grid.
-        GenerateGrid();
-        UpdateAllIcons();
-    }
-
     private void InitializeBoard()
     {
+        InitializeBoard(_rows, _cols, _colorCount, _thresholdA, _thresholdB, _thresholdC);
+    }
+
+    public void InitializeBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC)
+    {
+        _rows = rows;
+        _cols = cols;
+        _colorCount = colorCount;
+        _thresholdA = thresholdA;
+        _thresholdB = thresholdB;
+        _thresholdC = thresholdC;
+
         if (_blockSprites == null || _blockSprites.Count < _colorCount)
         {
             Debug.LogError("Not enough sprites configured!");
@@ -86,22 +78,64 @@ public class BoardController : MonoBehaviour
             _blockPool = new ObjectPool<Block>(_blockPrefab, _rows * _cols, _boardContainer);
         }
 
-        if (_grid == null)
-        {
-             _grid = new Block[_rows, _cols];
-             GenerateGrid();
-             UpdateAllIcons();
-        }
+        _grid = new Block[_rows, _cols];
+        GenerateGrid();
+        UpdateAllIcons();
 
         if (_genericParticle != null && _particlePool == null)
         {
             _particlePool = new ObjectPool<ParticleSystem>(_genericParticle, 20, _boardContainer);
         }
     }
+    
+    public void RestartBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC)
+    {
+        // Clear existing board
+        if (_grid != null)
+        {
+            for (int y = 0; y < _grid.GetLength(0); y++)
+            {
+                for (int x = 0; x < _grid.GetLength(1); x++)
+                {
+                    if (_grid[y, x] != null)
+                    {
+                        _blockPool.Return(_grid[y, x]);
+                        _grid[y, x] = null;
+                    }
+                }
+            }
+        }
+        
+        InitializeBoard(rows, cols, colorCount, thresholdA, thresholdB, thresholdC);
+    }
 
     private void GenerateGrid()
     {
-        // Calculate board offset to center it
+        // 1. Resize and Position Background Frame
+        if (_boardBackground != null)
+        {
+            float totalWidth = (_cols * _cellSize) + _backgroundPadding;
+            float totalHeight = (_rows * _cellSize) + _backgroundPadding;
+            
+            // Should be Sliced or Simple. If Sliced, we use size. 
+            // If Simple, we might need localScale (assuming sprite is 1x1 unit).
+            // Let's try attempting to set size if Sliced, else Scale.
+            
+            if (_boardBackground.drawMode == SpriteDrawMode.Sliced || _boardBackground.drawMode == SpriteDrawMode.Tiled)
+            {
+                _boardBackground.size = new Vector2(totalWidth, totalHeight);
+            }
+            else
+            {
+                // Fallback for simple sprites (assuming 100 PPU and 100x100px original size = 1 unit)
+                // Better approach: Set scale directly
+                 _boardBackground.transform.localScale = new Vector3(totalWidth, totalHeight, 1);
+            }
+            
+            _boardBackground.transform.position = Vector3.forward * 1; // Put it behind blocks (Z=1) if blocks are Z=0
+        }
+
+        // 2. Calculate board offset to center it (Blocks)
         float width = _cols * _cellSize;
         float height = _rows * _cellSize;
         Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0);
@@ -283,6 +317,18 @@ public class BoardController : MonoBehaviour
 
     private void RemoveBlocks(List<Block> blocks)
     {
+         int count = blocks.Count;
+         int scoreToAdd;
+
+        if (count >= _thresholdC)      scoreToAdd = count * 50; 
+        else if (count >= _thresholdB) scoreToAdd = count * 30;
+        else if (count >= _thresholdA) scoreToAdd = count * 20;
+        else                           scoreToAdd = count * 10;
+
+        _currentScore += scoreToAdd;
+        _scoreText.text = $"Score: {_currentScore}";
+         Debug.Log($"Patlayan Blok: {count}, Kazanılan Puan: {scoreToAdd}, Toplam: {_currentScore}");
+
         foreach (var block in blocks)
         {
             // Spawn Particle
