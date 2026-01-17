@@ -23,12 +23,39 @@ namespace Internal.Core
             // Ensure proper name for debugging
             gameObject.name = $"Block_{row}_{col}";
             
-            // Fix visual overlap: Lower blocks (smaller Y) should be rendered in FRONT (higher order)
-            // Multiplying Y by -10 ensures that. Ex: Y=5 -> Order=-50, Y=0 -> Order=0.
+            // Fixed sorting order as requested
             if (_renderer != null)
             {
-                _renderer.sortingOrder = (int)(transform.position.y * 10);
+                // Dynamic sorting order based on Row:
+                // Lower rows (bottom of screen) should be rendered ON TOP of higher rows.
+                // Assuming Row increases upwards.
+                _renderer.sortingOrder = Row - 1000; 
             }
+            
+            // Pop-In Animation (Scale 0 -> 1)
+            StartCoroutine(PopInRoutine());
+        }
+
+        private System.Collections.IEnumerator PopInRoutine()
+        {
+            transform.localScale = Vector3.zero;
+            float duration = 0.2f;
+            float time = 0;
+            
+            // Simple ease-out feel
+            while (time < duration)
+            {
+                time += Time.deltaTime;
+                float t = Mathf.Clamp01(time / duration);
+                
+                // Back/Overshoot effect or simple curve? Let's do simple smooth step.
+                // t = t * t * (3f - 2f * t); // SmoothStep
+                
+                transform.localScale = Vector3.one  * t;
+                yield return null;
+            }
+            
+            transform.localScale = Vector3.one;
         }
 
         public void UpdateVisual(Sprite newSprite)
@@ -40,12 +67,12 @@ namespace Internal.Core
         {
             Row = row;
             Col = col;
-            // TODO: Add interpolation/animation
+            // Immediate Teleport (No slide)
             transform.position = worldPosition;
             
-             if (_renderer != null)
+            if (_renderer != null)
             {
-                _renderer.sortingOrder = (int)(worldPosition.y * 10);
+                _renderer.sortingOrder = Row - 1000;
             }
         }
     }

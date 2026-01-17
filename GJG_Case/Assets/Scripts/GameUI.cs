@@ -44,6 +44,13 @@ public class GameUI : MonoBehaviour
 
         // Concise defaults (Normal)
         ApplyPreset(10, 8, 6, 4, 7, 9, false);
+
+        // Fix UI Layering: Force Canvas to be on top of everything
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas != null)
+        {
+            canvas.sortingOrder = 1000;
+        }
     }
 
     private void SetPanelState(bool isOpen)
