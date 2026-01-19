@@ -147,9 +147,25 @@ public class BoardController : MonoBehaviour
 
         if (_comboFillImage != null)
         {
-            if (multiplier >= 2.5f) _comboFillImage.color = _colorStage3;
-            else if (multiplier >= 1.5f) _comboFillImage.color = _colorStage2;
-            else _comboFillImage.color = _colorStage1;
+            // Smooth Gradient
+            // Range 1.0 -> 2.0 : Stage1 -> Stage2
+            // Range 2.0 -> 3.0 : Stage2 -> Stage3
+            
+            Color finalColor;
+            if (multiplier <= 2.0f)
+            {
+                 // returns 0.0 at 1.0, 1.0 at 2.0
+                 float t = Mathf.InverseLerp(1.0f, 2.0f, multiplier);
+                 finalColor = Color.Lerp(_colorStage1, _colorStage2, t);
+            }
+            else
+            {
+                 // returns 0.0 at 2.0, 1.0 at 3.0
+                 float t = Mathf.InverseLerp(2.0f, 3.0f, multiplier);
+                 finalColor = Color.Lerp(_colorStage2, _colorStage3, t);
+            }
+            
+            _comboFillImage.color = finalColor;
         }
     }
 
