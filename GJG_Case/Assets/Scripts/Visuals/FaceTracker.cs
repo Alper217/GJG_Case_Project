@@ -32,6 +32,12 @@ namespace Internal.Visuals
             _lastInteractionTime = Time.time;
         }
 
+        [Header("Mouth Settings")]
+        [SerializeField] private SpriteRenderer _mouthRenderer;
+        [SerializeField] private Sprite _mouthNormal; // :)
+        [SerializeField] private Sprite _mouthSilly;  // :P
+        [SerializeField] private Sprite _mouthWandering; // :| or :/
+
         // Idle Internal State
         private float _nextRandomLookTime;
         private Vector3 _randomLookTarget;
@@ -53,6 +59,7 @@ namespace Internal.Visuals
                     {
                         // 50% Normal / Centered (Pupils centered)
                         _useDirectTarget = false; 
+                        SetMouth(_mouthNormal);
                     }
                     else if (randomChoice < 0.7f)
                     {
@@ -60,6 +67,7 @@ namespace Internal.Visuals
                         // Target is very close to face
                         _randomLookTarget = transform.position + new Vector3(0, -0.2f, -1.0f); 
                         _useDirectTarget = true;
+                        SetMouth(_mouthSilly);
                     }
                     else
                     {
@@ -67,6 +75,7 @@ namespace Internal.Visuals
                         Vector2 randomCircle = Random.insideUnitCircle * 5.0f; 
                         _randomLookTarget = transform.position + new Vector3(randomCircle.x, randomCircle.y, -5f);
                         _useDirectTarget = true;
+                        SetMouth(_mouthWandering);
                     }
 
                     // Set next change time
@@ -82,10 +91,19 @@ namespace Internal.Visuals
             {
                 // Interaction Mode
                 _useDirectTarget = true;
+                SetMouth(_mouthNormal); // Or Happy?
             }
 
             UpdateEye(_leftEyeCenter, _leftPupil);
             UpdateEye(_rightEyeCenter, _rightPupil);
+        }
+
+        private void SetMouth(Sprite sprite)
+        {
+            if (_mouthRenderer != null && sprite != null)
+            {
+                _mouthRenderer.sprite = sprite;
+            }
         }
 
         private void UpdateEye(Transform center, Transform pupil)

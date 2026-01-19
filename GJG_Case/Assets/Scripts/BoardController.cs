@@ -39,6 +39,29 @@ public class BoardController : MonoBehaviour
     [SerializeField] private int _thresholdB = 7;
     [SerializeField] private int _thresholdC = 9; 
 
+    [Header("Score Settings")]
+    [SerializeField] private int _scorePerBlockBase = 10; // < A
+    [SerializeField] private int _scorePerBlockA = 20;    // >= A
+    [SerializeField] private int _scorePerBlockB = 30;    // >= B
+    [SerializeField] private int _scorePerBlockC = 50;    // >= C 
+
+    [Header("Combo System")]
+    [SerializeField] private UnityEngine.UI.Slider _comboSlider;
+    [SerializeField] private UnityEngine.UI.Image _comboFillImage; // Assign the "Fill" image of the slider
+    [SerializeField] private CanvasGroup _comboCanvasGroup; // Assign a CanvasGroup to the Combo UI Panel
+    [SerializeField] private TextMeshProUGUI _comboText;
+    
+    [Header("Combo Settings")]
+    [SerializeField] private float _maxComboTime = 3.0f;
+    [SerializeField] private int _comboActivationThreshold = 3; // How many blasts before combo starts
+    [SerializeField] private Color _colorStage1 = Color.green;  // 1x - 1.5x
+    [SerializeField] private Color _colorStage2 = Color.yellow; // 1.5x - 2.5x
+    [SerializeField] private Color _colorStage3 = Color.red;    // 2.5x - 3.0x
+
+    private float _currentComboTime;
+    private int _comboCount; // Raw count of blasts in sequence
+    private bool _isComboActive = false;
+
     // Internal State
     private ObjectPool<Block> _blockPool;
     private Block[,] _grid; // Visual grid
@@ -53,8 +76,97 @@ public class BoardController : MonoBehaviour
         InitializeBoard();
     }
 
+    private void Update()
+    {
+        // Input
+        if (Input.GetMouseButtonDown(0))
+        {
+            HandleClick();
+        }
+
+        // Combo Logic
+        if (_comboCount > 0)
+        {
+            _currentComboTime -= Time.deltaTime;
+            
+            if (_comboSlider != null)
+            {
+                _comboSlider.value = _currentComboTime / _maxComboTime;
+            }
+
+            if (_currentComboTime <= 0)
+            {
+                ResetCombo();
+            }
+        }
+
+        // Combo UI Animation (Fade In/Out)
+        if (_comboCanvasGroup != null)
+        {
+            float targetAlpha = _isComboActive ? 1.0f : 0.0f;
+            // Smooth fade
+            _comboCanvasGroup.alpha = Mathf.Lerp(_comboCanvasGroup.alpha, targetAlpha, Time.deltaTime * 5f);
+        }
+    }
+
+    private void ResetCombo()
+    {
+        _comboCount = 0;
+        _currentComboTime = 0;
+        _isComboActive = false;
+        // Don't maintain multiplier here, it resets.
+    }
+
+    private void IncrementCombo()
+    {
+        _comboCount++;
+        _currentComboTime = _maxComboTime;
+
+        // Check Activation
+        if (_comboCount >= _comboActivationThreshold)
+        {
+            _isComboActive = true;
+        }
+        
+        // Update Visuals if Active
+        if (_isComboActive)
+        {
+            UpdateComboVisuals();
+        }
+    }
+
+    private void UpdateComboVisuals()
+    {
+        float multiplier = GetComboMultiplier();
+
+        if (_comboText != null) 
+        {
+            _comboText.text = $"x{multiplier:F1}"; // Format 1.2
+            _comboText.transform.localScale = Vector3.one * 1.5f;
+        }
+
+        if (_comboFillImage != null)
+        {
+            if (multiplier >= 2.5f) _comboFillImage.color = _colorStage3;
+            else if (multiplier >= 1.5f) _comboFillImage.color = _colorStage2;
+            else _comboFillImage.color = _colorStage1;
+        }
+    }
+
+    private float GetComboMultiplier()
+    {
+        if (!_isComboActive) return 1.0f;
+
+        // Count how many blasts since activation
+        int effectiveCount = _comboCount - _comboActivationThreshold + 1;
+        
+        // Formula: 1.0 + (count * 0.1) clamped to 3.0
+        float val = 1.0f + (effectiveCount * 0.1f);
+        return Mathf.Min(val, 3.0f);
+    }
     private void InitializeBoard()
     {
+        if (_comboCanvasGroup != null) _comboCanvasGroup.alpha = 0f;
         InitializeBoard(_rows, _cols, _colorCount, _thresholdA, _thresholdB, _thresholdC);
     }
 
@@ -249,13 +361,8 @@ public class BoardController : MonoBehaviour
     }
     
     // Stub for input handling
-    private void Update()
-    {
-        if (Input.GetMouseButtonDown(0))
-        {
-            HandleClick();
-        }
-    }
+    // Input is now handled in the main Update loop above with Combo logic
+    // private void Update() { ... } 
 
     private void HandleClick()
     {
@@ -328,14 +435,22 @@ public class BoardController : MonoBehaviour
          int count = blocks.Count;
          int scoreToAdd;
 
-        if (count >= _thresholdC)      scoreToAdd = count * 50; 
-        else if (count >= _thresholdB) scoreToAdd = count * 30;
-        else if (count >= _thresholdA) scoreToAdd = count * 20;
-        else                           scoreToAdd = count * 10;
+        // Score Calculation
+        // Using configured values per block count
+        if (count >= _thresholdC)      scoreToAdd = count * _scorePerBlockC; 
+        else if (count >= _thresholdB) scoreToAdd = count * _scorePerBlockB;
+        else if (count >= _thresholdA) scoreToAdd = count * _scorePerBlockA;
+        else                           scoreToAdd = count * _scorePerBlockBase;
 
-        _currentScore += scoreToAdd;
+        // Apply Combo Multiplier
+        float multiplier = GetComboMultiplier();
+        int finalScore = Mathf.RoundToInt(scoreToAdd * multiplier);
+
+        _currentScore += finalScore;
         _scoreText.text = $"Score: {_currentScore}";
-         Debug.Log($"Patlayan Blok: {count}, Kazanılan Puan: {scoreToAdd}, Toplam: {_currentScore}");
+         Debug.Log($"Base: {scoreToAdd}, Mult: {multiplier:F1}, Added: {finalScore}, Total: {_currentScore}");
+
+        IncrementCombo();
 
         foreach (var block in blocks)
         {
