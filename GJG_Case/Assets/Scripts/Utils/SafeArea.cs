@@ -73,7 +73,7 @@ namespace Internal.Core.Utils
                 _rectTransform.anchorMax = anchorMax;
             }
             
-            // Debug.Log($"Safe Area Applied: {r} | ConformX: {_conformX} | ConformY: {_conformY}");
+             Debug.Log($"Safe Area Applied: {r} | ConformX: {_conformX} | ConformY: {_conformY}");
         }
     }
 }

@@ -67,12 +67,52 @@ namespace Internal.Core
         {
             Row = row;
             Col = col;
-            // Immediate Teleport (No slide)
-            transform.position = worldPosition;
+            
+            // Stop any existing movement to prevent conflict
+            if (_moveCoroutine != null) StopCoroutine(_moveCoroutine);
+            _moveCoroutine = StartCoroutine(MoveToPositionRoutine(worldPosition));
             
             if (_renderer != null)
             {
                 _renderer.sortingOrder = Row - 1000;
+            }
+        }
+
+        private Coroutine _moveCoroutine;
+        private System.Collections.IEnumerator MoveToPositionRoutine(Vector3 targetPos)
+        {
+            Vector3 startPos = transform.position;
+            float duration = 0.5f; 
+            float time = 0;
+
+            while (time < duration)
+            {
+                time += Time.deltaTime;
+                float t = time / duration;
+                
+                // Ease Out Bounce
+                float tBounce = EaseOutBounce(t);
+                
+                transform.position = Vector3.LerpUnclamped(startPos, targetPos, tBounce);
+                yield return null;
+            }
+            
+            transform.position = targetPos;
+        }
+
+        private float EaseOutBounce(float x)
+        {
+            const float n1 = 7.5625f;
+            const float d1 = 2.75f;
+
+            if (x < 1 / d1) {
+                return n1 * x * x;
+            } else if (x < 2 / d1) {
+                return n1 * (x -= 1.5f / d1) * x + 0.75f;
+            } else if (x < 2.5 / d1) {
+                return n1 * (x -= 2.25f / d1) * x + 0.9375f;
+            } else {
+                return n1 * (x -= 2.625f / d1) * x + 0.984375f;
             }
         }
     }

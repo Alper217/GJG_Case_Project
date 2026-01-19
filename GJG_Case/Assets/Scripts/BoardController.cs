@@ -19,6 +19,7 @@ public class BoardController : MonoBehaviour
     [SerializeField] private SpriteRenderer _boardBackground; // The yellow frame
     [SerializeField] private float _backgroundPadding = 0.5f; // Extra space around blocks
     
+    [SerializeField] private Vector3 _boardOffset;
     // Config for icons
     // We will load these from Resources or assign in inspector
     // For now simple list
@@ -132,13 +133,13 @@ public class BoardController : MonoBehaviour
                  _boardBackground.transform.localScale = new Vector3(totalWidth, totalHeight, 1);
             }
             
-            _boardBackground.transform.position = Vector3.forward * 1; // Put it behind blocks (Z=1) if blocks are Z=0
+            _boardBackground.transform.position = (Vector3.forward * 1) + _boardOffset; // Put it behind blocks (Z=1) if blocks are Z=0
         }
 
         // 2. Calculate board offset to center it (Blocks)
         float width = _cols * _cellSize;
         float height = _rows * _cellSize;
-        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0);
+        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0) + _boardOffset;
 
         for (int x = 0; x < _cols; x++)
         {
@@ -281,7 +282,7 @@ public class BoardController : MonoBehaviour
         // Let's store board parameters properly.
         float width = _cols * _cellSize;
         float height = _rows * _cellSize;
-        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0);
+        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0) + _boardOffset;
 
         // Inverse of pos = origin + new Vector3(x * _cellSize, y * _cellSize, 0);
         // pos - origin = (x * cell, y * cell)
@@ -295,6 +296,12 @@ public class BoardController : MonoBehaviour
 
         if (gridX >= 0 && gridX < _cols && gridY >= 0 && gridY < _rows)
         {
+            // Update Face Tracker
+            if (_faceTracker != null)
+            {
+                _faceTracker.SetLookTarget(mouseWorldPos);
+            }
+
             Block clickedBlock = _grid[gridY, gridX];
             if (clickedBlock != null)
             {
@@ -309,6 +316,7 @@ public class BoardController : MonoBehaviour
     }
 
     [Header("Effects")]
+    [SerializeField] private Internal.Visuals.FaceTracker _faceTracker;
     [SerializeField] private ParticleSystem _genericParticle; // Simple version: one particle system with changing color or multiple prefabs
     // For optimization: Use one particle system and emit with color? Or pool of particle systems?
     // Let's assume a simple pool of ParticleSystems or just one One-Shot particle prefab.
@@ -384,22 +392,21 @@ public class BoardController : MonoBehaviour
             }
         }
         
-        yield return new WaitForSeconds(0.2f); // Animation delay placeholder
+        yield return new WaitForSeconds(0.4f); // Animation delay placeholder
 
         // 2. Refill
+        float width = _cols * _cellSize;
+        float height = _rows * _cellSize;
+        Vector3 boardOrigin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0) + _boardOffset;
+
         for (int x = 0; x < _cols; x++)
         {
             for (int y = 0; y < _rows; y++)
             {
                 if (_grid[y, x] == null)
                 {
-                    // Create new block
-                     CreateBlockAt(x, y, GetWorldPosition(x, y) + Vector3.up * _rows * _cellSize); // Spawn above
-                     // Animate falling to GetWorldPosition(x,y)
-                     // For now instant snap in CreateBlockAt (need to refactor CreateBlockAt to separate pos)
-                     // Re-setting target pos:
-                     Block b = _grid[y, x];
-                     b.UpdatePosition(y, x, GetWorldPosition(x, y));
+                    // Create new block directly at target position (Pop-up animation from Init)
+                    CreateBlockAt(x, y, boardOrigin);
                 }
             }
         }
@@ -432,7 +439,7 @@ public class BoardController : MonoBehaviour
     {
         float width = _cols * _cellSize;
         float height = _rows * _cellSize;
-        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0);
+        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0) + _boardOffset;
         return origin + new Vector3(x * _cellSize, y * _cellSize, 0);
     }
 }
