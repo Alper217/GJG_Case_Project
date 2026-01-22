@@ -30,6 +30,7 @@ public class BoardController : MonoBehaviour
         public Sprite IconA;
         public Sprite IconB;
         public Sprite IconC;
+        public Color ParticleColor;
     }
     
     [SerializeField] private List<ColorSprites> _blockSprites; 
@@ -58,9 +59,34 @@ public class BoardController : MonoBehaviour
     [SerializeField] private Color _colorStage2 = Color.yellow; // 1.5x - 2.5x
     [SerializeField] private Color _colorStage3 = Color.red;    // 2.5x - 3.0x
 
+    [Header("Juice")]
+    [SerializeField] private Internal.Visuals.FloatingText _floatingTextPrefab;
+    [SerializeField] private int _shakeThreshold = 5;
+    [SerializeField] private float _shakeDuration = 0.2f;
+    [SerializeField] private float _shakeMagnitude = 0.2f;
+    private Internal.Visuals.CameraShake _cameraShake;
+
+    [Header("Goals System")]
+    [SerializeField] private Internal.Visuals.GoalItemUI _goalItemPrefab;
+    [SerializeField] private Transform _goalsContainer; // Parent object for UI items (Horizontal Layout Group)
+    [SerializeField] private int _goalsToGenerate = 2; // How many different color goals?
+    [SerializeField] private int _minGoalTarget = 10;
+    [SerializeField] private int _maxGoalTarget = 25;
+    
+    private List<Internal.Visuals.GoalItemUI> _activeGoals = new List<Internal.Visuals.GoalItemUI>();
+
     private float _currentComboTime;
     private int _comboCount; // Raw count of blasts in sequence
     private bool _isComboActive = false;
+
+    [Header("Game Loop")]
+    [SerializeField] private float _levelDuration = 60.0f;
+    [SerializeField] private TextMeshProUGUI _timerText;
+    [SerializeField] private GameObject _endLevelPanel; // Reuse for Win/Lose for now
+    [SerializeField] private TextMeshProUGUI _endLevelText;
+
+    private float _currentTime;
+    private bool _isGameActive = false;
 
     // Internal State
     private ObjectPool<Block> _blockPool;
@@ -74,14 +100,32 @@ public class BoardController : MonoBehaviour
     private void Start()
     {
         InitializeBoard();
+        
+        // Auto-add text prefab if missing for testing (optional, but good for safety)
+        if (Camera.main != null)
+        {
+             _cameraShake = Camera.main.GetComponent<Internal.Visuals.CameraShake>();
+             if (_cameraShake == null) _cameraShake = Camera.main.gameObject.AddComponent<Internal.Visuals.CameraShake>();
+        }
     }
 
     private void Update()
     {
         // Input
-        if (Input.GetMouseButtonDown(0))
+        if (_isGameActive && Input.GetMouseButtonDown(0))
         {
             HandleClick();
+        }
+
+        if (_isGameActive)
+        {
+            _currentTime -= Time.deltaTime;
+            UpdateTimerUI();
+
+            if (_currentTime <= 0)
+            {
+                GameOver(false);
+            }
         }
 
         // Combo Logic
@@ -215,6 +259,56 @@ public class BoardController : MonoBehaviour
         {
             _particlePool = new ObjectPool<ParticleSystem>(_genericParticle, 20, _boardContainer);
         }
+        
+        GenerateGoals();
+        
+        // Start Game
+        _currentTime = _levelDuration;
+        _isGameActive = true;
+        if (_endLevelPanel != null) _endLevelPanel.SetActive(false);
+    }
+    
+    private void GenerateGoals()
+    {
+        // Clear existing UI
+        if (_activeGoals != null)
+        {
+            foreach (var goal in _activeGoals)
+            {
+                 if (goal != null) Destroy(goal.gameObject);
+            }
+            _activeGoals.Clear();
+        }
+        else
+        {
+            _activeGoals = new List<Internal.Visuals.GoalItemUI>();
+        }
+
+        if (_goalItemPrefab == null || _goalsContainer == null) return;
+
+        // Pick random unique colors
+        List<int> availableColors = new List<int>();
+        for (int i = 0; i < _colorCount; i++) availableColors.Add(i);
+        
+        int countToSpawn = Mathf.Min(_goalsToGenerate, _colorCount);
+
+        for (int i = 0; i < countToSpawn; i++)
+        {
+            if (availableColors.Count == 0) break;
+            
+            int rndIndex = Random.Range(0, availableColors.Count);
+            int colorId = availableColors[rndIndex];
+            availableColors.RemoveAt(rndIndex);
+
+            int targetAmount = Random.Range(_minGoalTarget, _maxGoalTarget + 1);
+
+            var goalUI = Instantiate(_goalItemPrefab, _goalsContainer);
+            // Use the "IconC" or "Default" sprite for the goal icon
+            Sprite icon = _blockSprites[colorId].Default; 
+            goalUI.Init(colorId, targetAmount, icon);
+            
+            _activeGoals.Add(goalUI);
+        }
     }
     
     public void RestartBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC)
@@ -325,6 +419,8 @@ public class BoardController : MonoBehaviour
         
         float verticalOffset = (_bottomPadding - _topPadding) / 2f;
         cam.transform.position = new Vector3(0, verticalOffset, -10);
+        
+        if (_cameraShake != null) _cameraShake.SetOriginalPos(cam.transform.localPosition);
     }
 
     private void UpdateAllIcons()
@@ -464,7 +560,44 @@ public class BoardController : MonoBehaviour
 
         _currentScore += finalScore;
         _scoreText.text = $"Score: {_currentScore}";
-         Debug.Log($"Base: {scoreToAdd}, Mult: {multiplier:F1}, Added: {finalScore}, Total: {_currentScore}");
+        Debug.Log($"Base: {scoreToAdd}, Mult: {multiplier:F1}, Added: {finalScore}, Total: {_currentScore}");
+
+        // Juice: Screen Shake
+        if (count >= _shakeThreshold && _cameraShake != null)
+        {
+            _cameraShake.Shake(_shakeDuration, _shakeMagnitude);
+        }
+        
+        // Goals Upgrade
+        if (_activeGoals != null && blocks.Count > 0)
+        {
+            int colorId = blocks[0].ColorId;
+            bool allComplete = true;
+            
+            foreach (var goal in _activeGoals)
+            {
+                if (goal.ColorId == colorId)
+                {
+                    goal.DecreaseCount(blocks.Count);
+                }
+                
+                if (!goal.IsCompleted()) allComplete = false;
+            }
+            
+            if (allComplete)
+            {
+                GameOver(true);
+            }
+        }
+
+        // Juice: Floating Text
+        if (_floatingTextPrefab != null && blocks.Count > 0)
+        {
+            // Spawn at the center of the first block (or average position)
+            Vector3 spawnPos = blocks[0].transform.position + Vector3.up * 0.5f;
+            var ft = Instantiate(_floatingTextPrefab, spawnPos, Quaternion.identity);
+            ft.Init($"+{finalScore}", _blockSprites[blocks[0].ColorId].ParticleColor);
+        }
 
         IncrementCombo();
 
@@ -476,10 +609,10 @@ public class BoardController : MonoBehaviour
                 ParticleSystem p = _particlePool.Get();
                 p.transform.position = block.transform.position;
                 
-                // Set color if possible
+                // Set color
                 var main = p.main;
-                // Assuming we can get color from sprite or config. 
-                // For now, let's just emit.
+                main.startColor = _blockSprites[block.ColorId].ParticleColor;
+
                 p.Play();
                 StartCoroutine(ReturnParticle(p, 1.0f));
             }
@@ -572,5 +705,51 @@ public class BoardController : MonoBehaviour
         float height = _rows * _cellSize;
         Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0) + _boardOffset;
         return origin + new Vector3(x * _cellSize, y * _cellSize, 0);
+    }
+
+    private void UpdateTimerUI()
+    {
+        if (_timerText != null)
+        {
+            // Fix: Clamp time to 0 to avoid negative numbers
+            float displayTime = Mathf.Max(0, _currentTime);
+
+            // Format 00:00
+            int minutes = Mathf.FloorToInt(displayTime / 60F);
+            int seconds = Mathf.FloorToInt(displayTime % 60F);
+            _timerText.text = $"{minutes:00}:{seconds:00}";
+            
+            // Last 10 seconds warning
+            if (displayTime <= 10f && displayTime > 0) 
+            {
+                _timerText.color = Color.red;
+                
+                // Pulsate Effect: Sine wave between 1.0 and 1.2 scale
+                float scale = 1.0f + Mathf.PingPong(Time.time * 1f, 0.3f);
+                _timerText.transform.localScale = Vector3.one * scale;
+            }
+            else 
+            {
+                _timerText.color = Color.white;
+                _timerText.transform.localScale = Vector3.one;
+            }
+        }
+    }
+
+    private void GameOver(bool isWin)
+    {
+        _isGameActive = false;
+        Debug.Log($"Game Over: {(isWin ? "WIN" : "LOSE")}");
+
+        if (_endLevelPanel != null)
+        {
+            _endLevelPanel.SetActive(true);
+            if (_endLevelText != null)
+            {
+                _endLevelText.text = isWin ? "LEVEL COMPLETED!" : "TIME'S UP!";
+            }
+        }
+        
+        // Disable input or show particles, etc.
     }
 }
