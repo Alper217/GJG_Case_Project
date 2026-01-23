@@ -85,6 +85,31 @@ public class BoardController : MonoBehaviour
     [SerializeField] private GameObject _endLevelPanel; // Reuse for Win/Lose for now
     [SerializeField] private TextMeshProUGUI _endLevelText;
 
+    [Header("Timer Power-Up")]
+    [SerializeField] private int _extraTimeUsesCount = 3;
+    [SerializeField] private TextMeshProUGUI _extraTimeText;
+    [SerializeField] private UnityEngine.UI.Image _extraTimeButtonImage;
+    
+    [Header("Sort Power-Up")]
+    [SerializeField] private int _sortUsesCount = 3;
+    [SerializeField] private TextMeshProUGUI _sortText;
+    [SerializeField] private UnityEngine.UI.Image _sortButtonImage;
+
+    [Header("Undo Power-Up")]
+    [SerializeField] private int _undoUsesCount = 3;
+    [SerializeField] private TextMeshProUGUI _undoText;
+    [SerializeField] private UnityEngine.UI.Image _undoButtonImage;
+    [SerializeField] private Color _disabledButtonColor = Color.gray;
+    
+    // Undo System
+    // Undo System
+    private Stack<BoardState> _undoStack = new Stack<BoardState>();
+    private struct BoardState
+    {
+        public int Score;
+        public int[,] GridColors; // -1 for empty
+    }
+
     private float _currentTime;
     private bool _isGameActive = false;
 
@@ -266,6 +291,33 @@ public class BoardController : MonoBehaviour
         _currentTime = _levelDuration;
         _isGameActive = true;
         if (_endLevelPanel != null) _endLevelPanel.SetActive(false);
+        _extraTimeUsesCount = 3;
+        if (_extraTimeText != null) _extraTimeText.text = _extraTimeUsesCount.ToString();
+        
+        // Reset color for button and all children
+        if (_extraTimeButtonImage != null)
+        {
+             var graphics = _extraTimeButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+             foreach (var g in graphics) g.color = Color.white;
+        }
+
+        // Reset Sort
+        _sortUsesCount = 3;
+        if (_sortText != null) _sortText.text = _sortUsesCount.ToString();
+        if (_sortButtonImage != null)
+        {
+             var graphics = _sortButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+             foreach (var g in graphics) g.color = Color.white;
+        }
+
+        // Reset Undo
+        _undoUsesCount = 3;
+        if (_undoText != null) _undoText.text = _undoUsesCount.ToString();
+        if (_undoButtonImage != null)
+        {
+             var graphics = _undoButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+             foreach (var g in graphics) g.color = Color.white;
+        }
     }
     
     private void GenerateGoals()
@@ -527,6 +579,7 @@ public class BoardController : MonoBehaviour
                 Internal.Logic.MatchFinder.FindConnectedGroup(clickedBlock, _grid, _rows, _cols, _searchBuffer);
                 if (_searchBuffer.Count >= 2)
                 {
+                    SaveState(); // Save before popping
                     Debug.Log($"Found match of size {_searchBuffer.Count}");
                     RemoveBlocks(_searchBuffer);
                 }
@@ -751,5 +804,219 @@ public class BoardController : MonoBehaviour
         }
         
         // Disable input or show particles, etc.
+    }
+
+    public bool AddExtraTime(float seconds)
+    {
+        if (_extraTimeUsesCount <= 0)
+        {
+            Debug.Log("Extra Time limit reached!");
+            return false;
+        }
+
+        _currentTime += seconds;
+        _extraTimeUsesCount--;
+        if (_extraTimeText != null) _extraTimeText.text = $"{_extraTimeUsesCount}";
+        Debug.Log($"Extra Time Added! Remaining: {_extraTimeUsesCount}");
+        
+        // Visual feedback if empty
+        if (_extraTimeUsesCount <= 0 && _extraTimeButtonImage != null)
+        {
+            var graphics = _extraTimeButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+            foreach (var g in graphics)
+            {
+                g.color = _disabledButtonColor;
+            }
+        }
+
+        // Update UI immediately to show change
+        UpdateTimerUI();
+        
+        return true;
+    }
+
+
+    public void SortBoardByColor()
+    {
+        if (_sortUsesCount <= 0)
+        {
+            Debug.Log("Sort limit reached!");
+            return;
+        }
+
+        _sortUsesCount--;
+        if (_sortText != null) _sortText.text = $"{_sortUsesCount}";
+        
+        if (_sortUsesCount <= 0 && _sortButtonImage != null)
+        {
+            var graphics = _sortButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+            foreach (var g in graphics) g.color = _disabledButtonColor;
+        }
+
+        SaveState(); // Save before sorting
+
+        // 1. Gather all active blocks
+        List<Block> allBlocks = new List<Block>();
+        for (int y = 0; y < _rows; y++)
+        {
+            for (int x = 0; x < _cols; x++)
+            {
+                if (_grid[y, x] != null)
+                {
+                    allBlocks.Add(_grid[y, x]);
+                }
+            }
+        }
+        
+        // 2. Sort them by ColorId
+        // We can also sort by other criteria if we want specific patterns, but simple ColorId sort groups them.
+        allBlocks.Sort((a, b) => a.ColorId.CompareTo(b.ColorId));
+        
+        // 3. Re-distribute to grid
+        // We fill column by column or row by row? Row by row groups them horizontally.
+        int index = 0;
+        for (int y = 0; y < _rows; y++)
+        {
+            for (int x = 0; x < _cols; x++)
+            {
+                // Safety check
+                if (index < allBlocks.Count)
+                {
+                    Block b = allBlocks[index];
+                    _grid[y, x] = b;
+                    
+                    // Update Logic Position
+                    // Visual position update (immediate or tween)
+                    // Let's do immediate for now, maybe add a small pop effect
+                    
+                    b.UpdatePosition(y, x, GetWorldPosition(x, y));
+                    
+                    // Add a small visual pop/punch
+                    // b.transform.localScale = Vector3.one * 0.5f;
+                    // LeanTween or simple coroutine can restore scale. 
+                    // Assuming Block has Update loop attempting to go back to 1, or we just rely on next frame.
+                    // Let's manually trigger a pop if Block has it, or just set scale and let it recover if it has elastic logic.
+                    // For now, just re-init visuals.
+                    
+                    index++;
+                }
+                else
+                {
+                    _grid[y, x] = null; // Should not happen if count matches
+                }
+            }
+        }
+        
+        // 4. Update Icons for new groups
+        UpdateAllIcons();
+        
+        
+        Debug.Log("Board Sorted by Color!");
+    }
+
+    private void SaveState()
+    {
+        BoardState state = new BoardState();
+        state.Score = _currentScore;
+        state.GridColors = new int[_rows, _cols];
+
+        for (int y = 0; y < _rows; y++)
+        {
+            for (int x = 0; x < _cols; x++)
+            {
+                if (_grid[y, x] != null)
+                {
+                    state.GridColors[y, x] = _grid[y, x].ColorId;
+                }
+                else
+                {
+                    state.GridColors[y, x] = -1;
+                }
+            }
+        }
+
+        _undoStack.Push(state);
+        
+        // Limit stack size if needed (e.g., 10 moves)
+        if (_undoStack.Count > 10)
+        {
+             var list = new List<BoardState>(_undoStack);
+             list.RemoveAt(list.Count - 1); // Remove oldest
+             _undoStack = new Stack<BoardState>(list); 
+             // Ideally simpler: circular buffer or just ignore limit for now
+        }
+    }
+
+    public void UndoLastMove()
+    {
+        if (_undoUsesCount <= 0)
+        {
+            Debug.Log("Undo limit reached!");
+            return;
+        }
+
+        if (_undoStack.Count > 0)
+        {
+            _undoUsesCount--;
+            if (_undoText != null) _undoText.text = $"{_undoUsesCount}";
+            
+            if (_undoUsesCount <= 0 && _undoButtonImage != null)
+            {
+                var graphics = _undoButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+                foreach (var g in graphics) g.color = _disabledButtonColor;
+            }
+
+            BoardState state = _undoStack.Pop();
+            RestoreState(state);
+        }
+        else
+        {
+            Debug.Log("Nothing to undo!");
+        }
+    }
+
+    private void RestoreState(BoardState state)
+    {
+        // Restore Score
+        _currentScore = state.Score;
+        _scoreText.text = $"Score: {_currentScore}";
+
+        // Restore Grid
+        // 1. Clear current blocks
+        for (int y = 0; y < _rows; y++)
+        {
+            for (int x = 0; x < _cols; x++)
+            {
+                if (_grid[y, x] != null)
+                {
+                    _blockPool.Return(_grid[y, x]);
+                    _grid[y, x] = null;
+                }
+            }
+        }
+
+        // 2. Recreate blocks from state
+        float width = _cols * _cellSize;
+        float height = _rows * _cellSize;
+        Vector3 origin = new Vector3(-width / 2 + _cellSize / 2, -height / 2 + _cellSize / 2, 0) + _boardOffset;
+
+        for (int y = 0; y < _rows; y++)
+        {
+            for (int x = 0; x < _cols; x++)
+            {
+                int colorId = state.GridColors[y, x];
+                if (colorId != -1) // If not empty
+                {
+                    Block block = _blockPool.Get();
+                    Vector3 pos = origin + new Vector3(x * _cellSize, y * _cellSize, 0);
+                    block.transform.position = pos;
+                    block.Init(y, x, colorId, _blockSprites[colorId].Default);
+                    _grid[y, x] = block;
+                }
+            }
+        }
+        
+        UpdateAllIcons();
+        Debug.Log("Undo successful!");
     }
 }

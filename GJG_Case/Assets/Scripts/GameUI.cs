@@ -21,6 +21,11 @@ public class GameUI : MonoBehaviour
     [SerializeField] private Button _easyButton;
     [SerializeField] private Button _mediumButton;
     [SerializeField] private Button _hardButton;
+    
+    [Header("Power-Up Buttons")]
+    [SerializeField] private Button _extraTimeButton;
+    [SerializeField] private Button _sortButton;
+    [SerializeField] private Button _undoButton;
 
     [Header("Panel Controls")]
     [SerializeField] private GameObject _inputPanel;
@@ -34,6 +39,10 @@ public class GameUI : MonoBehaviour
         if (_easyButton != null) _easyButton.onClick.AddListener(() => ApplyPreset(8, 6, 3, 3, 5, 7));
         if (_mediumButton != null) _mediumButton.onClick.AddListener(() => ApplyPreset(10, 8, 5, 4, 7, 9));
         if (_hardButton != null) _hardButton.onClick.AddListener(() => ApplyPreset(12, 9, 6, 5, 8, 10));
+
+        if (_extraTimeButton != null) _extraTimeButton.onClick.AddListener(() => _boardController.AddExtraTime(10f));
+        if (_sortButton != null) _sortButton.onClick.AddListener(() => _boardController.SortBoardByColor());
+        if (_undoButton != null) _undoButton.onClick.AddListener(() => _boardController.UndoLastMove());
 
         // Panel Logic
         if (_openPanelButton != null) _openPanelButton.onClick.AddListener(() => SetPanelState(true));
