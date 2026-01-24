@@ -100,8 +100,7 @@ public class BoardController : MonoBehaviour
     [SerializeField] private TextMeshProUGUI _undoText;
     [SerializeField] private UnityEngine.UI.Image _undoButtonImage;
     [SerializeField] private Color _disabledButtonColor = Color.gray;
-    
-    // Undo System
+
     // Undo System
     private Stack<BoardState> _undoStack = new Stack<BoardState>();
     private struct BoardState
@@ -112,6 +111,9 @@ public class BoardController : MonoBehaviour
 
     private float _currentTime;
     private bool _isGameActive = false;
+    private int _currentLevel = 1;
+    public bool IsCustomMode = false; // Public for GameUI to check if needed, or internal logic
+    [SerializeField] private GameUI _gameUI; // Reference back to GameUI for level updates
 
     // Internal State
     private ObjectPool<Block> _blockPool;
@@ -124,7 +126,12 @@ public class BoardController : MonoBehaviour
    
     private void Start()
     {
-        InitializeBoard();
+
+        // Don't auto-start. Wait for UI.
+        // InitializeBoard(); 
+        
+        // Ensure UI reference if possible
+        if (_gameUI == null) _gameUI = FindObjectOfType<GameUI>();
         
         // Auto-add text prefab if missing for testing (optional, but good for safety)
         if (Camera.main != null)
@@ -257,12 +264,21 @@ public class BoardController : MonoBehaviour
 
     public void InitializeBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC)
     {
+        // Ensure previous board is cleared before creating a new one
+        ClearBoard();
+
         _rows = rows;
         _cols = cols;
         _colorCount = colorCount;
         _thresholdA = thresholdA;
         _thresholdB = thresholdB;
         _thresholdC = thresholdC;
+
+
+
+        // Auto-Scale Logic REMOVED per user request
+        // _cellSize = 1.0f; // Default or Inspector value
+
 
         if (_blockSprites == null || _blockSprites.Count < _colorCount)
         {
@@ -291,33 +307,8 @@ public class BoardController : MonoBehaviour
         _currentTime = _levelDuration;
         _isGameActive = true;
         if (_endLevelPanel != null) _endLevelPanel.SetActive(false);
-        _extraTimeUsesCount = 3;
-        if (_extraTimeText != null) _extraTimeText.text = _extraTimeUsesCount.ToString();
-        
-        // Reset color for button and all children
-        if (_extraTimeButtonImage != null)
-        {
-             var graphics = _extraTimeButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
-             foreach (var g in graphics) g.color = Color.white;
-        }
-
-        // Reset Sort
-        _sortUsesCount = 3;
-        if (_sortText != null) _sortText.text = _sortUsesCount.ToString();
-        if (_sortButtonImage != null)
-        {
-             var graphics = _sortButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
-             foreach (var g in graphics) g.color = Color.white;
-        }
-
-        // Reset Undo
-        _undoUsesCount = 3;
-        if (_undoText != null) _undoText.text = _undoUsesCount.ToString();
-        if (_undoButtonImage != null)
-        {
-             var graphics = _undoButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>();
-             foreach (var g in graphics) g.color = Color.white;
-        }
+        // Power-ups are now managed globally per run, explicitly reset via ResetPowerUps() if needed.
+        // InitializeBoard focuses on the grid and level params.
     }
     
     private void GenerateGoals()
@@ -365,22 +356,13 @@ public class BoardController : MonoBehaviour
     
     public void RestartBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC)
     {
-        // Clear existing board
-        if (_grid != null)
-        {
-            for (int y = 0; y < _grid.GetLength(0); y++)
-            {
-                for (int x = 0; x < _grid.GetLength(1); x++)
-                {
-                    if (_grid[y, x] != null)
-                    {
-                        _blockPool.Return(_grid[y, x]);
-                        _grid[y, x] = null;
-                    }
-                }
-            }
-        }
-        
+        // This is effectively a "Custom Game" start.
+        IsCustomMode = true;
+        ResetPowerUps();
+        _currentScore = 0; // Reset score too for custom game
+        if (_scoreText != null) _scoreText.text = $"Score: {_currentScore}";
+
+        // InitializeBoard now handles clearing, so we just call it.
         InitializeBoard(rows, cols, colorCount, thresholdA, thresholdB, thresholdC);
     }
 
@@ -520,7 +502,14 @@ public class BoardController : MonoBehaviour
         Vector3 pos = origin + new Vector3(x * _cellSize, y * _cellSize, 0);
         block.transform.position = pos;
         
-        block.Init(y, x, colorId, _blockSprites[colorId].Default);
+        block.transform.position = pos;
+        
+        // Revert: Pass default scale (handled inside Block as default) or just remove arg if we revert Block.cs too.
+        // For now, keeping Block.cs flexible but passing 1.0 here explicitly or just removing arg if I revert signature.
+        // Let's pass nothing if I revert Block.cs signature, but I haven't yet. 
+        // Safer to just pass 1.0f for now or revert signature in next step.
+        // Let's assume I revert Block.cs signature next.
+        block.Init(y, x, colorId, _blockSprites[colorId].Default); 
         _grid[y, x] = block;
     }
     
@@ -734,21 +723,30 @@ public class BoardController : MonoBehaviour
         // Check for deadlock after refill
         if (Internal.Logic.ShuffleLogic.IsDeadlocked(_grid, _rows, _cols))
         {
-             Debug.Log("Deadlock detected! Shuffling...");
-             yield return new WaitForSeconds(0.5f);
-             
-             // Collect all blocks
-             _shuffleBuffer.Clear();
-             foreach (var b in _grid) if(b!=null) _shuffleBuffer.Add(b);
-             
-             Internal.Logic.ShuffleLogic.ShuffleBoard(_grid, _rows, _cols, _shuffleBuffer);
-             
-             // Update positions visually
-             foreach (var b in _shuffleBuffer)
+             // If player has power-ups, do not auto shuffle, let them use strategy
+             bool hasPowerUps = _sortUsesCount > 0 || _undoUsesCount > 0;
+             if (!hasPowerUps)
              {
-                 b.UpdatePosition(b.Row, b.Col, GetWorldPosition(b.Col, b.Row));
+                 Debug.Log("Deadlock detected and no power-ups! Shuffling...");
+                 yield return new WaitForSeconds(0.5f);
+                 
+                 // Collect all blocks
+                 _shuffleBuffer.Clear();
+                 foreach (var b in _grid) if(b!=null) _shuffleBuffer.Add(b);
+                 
+                 Internal.Logic.ShuffleLogic.ShuffleBoard(_grid, _rows, _cols, _shuffleBuffer);
+                 
+                 // Update positions visually
+                 foreach (var b in _shuffleBuffer)
+                 {
+                     b.UpdatePosition(b.Row, b.Col, GetWorldPosition(b.Col, b.Row));
+                 }
+                 UpdateAllIcons();
              }
-             UpdateAllIcons();
+             else
+             {
+                 Debug.Log("Deadlock detected, awaiting player power-up usage.");
+             }
         }
     }
 
@@ -792,19 +790,151 @@ public class BoardController : MonoBehaviour
     private void GameOver(bool isWin)
     {
         _isGameActive = false;
-        Debug.Log($"Game Over: {(isWin ? "WIN" : "LOSE")}");
-
-        if (_endLevelPanel != null)
+        
+        if (isWin)
         {
-            _endLevelPanel.SetActive(true);
-            if (_endLevelText != null)
+            Debug.Log("Level Complete!");
+            // Transition to next level
+            StartCoroutine(LevelCompleteRoutine());
+        }
+        else
+        {
+            Debug.Log("Game Over!");
+            if (_endLevelText != null) _endLevelText.text = "LEVEL FAILED";
+            if (_endLevelPanel != null) _endLevelPanel.SetActive(true);
+        }
+    }
+
+    private System.Collections.IEnumerator LevelCompleteRoutine()
+    {
+        if (_endLevelText != null) _endLevelText.text = "LEVEL COMPLETE!";
+        if (_endLevelPanel != null) _endLevelPanel.SetActive(true);
+        
+        yield return new WaitForSeconds(2.0f);
+        
+        if (IsCustomMode)
+        {
+            // In Custom Mode, we loop the same difficulty.
+            // Just restart board with current params.
+            InitializeBoard(_rows, _cols, _colorCount, _thresholdA, _thresholdB, _thresholdC);
+        }
+        else
+        {
+            // Normal progression
+            StartLevel(_currentLevel + 1);
+        }
+    }
+
+    public void StartGame()
+    {
+        IsCustomMode = false;
+        _currentScore = 0;
+        if (_scoreText != null) _scoreText.text = $"Score: 0";
+        ResetPowerUps(); // Reset only at the start of the full game run
+        StartLevel(1);
+    }
+    
+    public void ResetGame()
+    {
+        _isGameActive = false;
+        StopAllCoroutines(); // Kill any transitions
+        
+        ClearBoard();
+        
+        if (_endLevelPanel != null) _endLevelPanel.SetActive(false);
+    }
+    
+    // Helper to clear board and goals
+    private void ClearBoard()
+    {
+        // Clear blocks
+        if (_grid != null)
+        {
+            // Note: _grid might be larger than current _rows/_cols if we are resizing down?
+            // Actually _grid is allocated with _rows/_cols. 
+            // We should use _grid.GetLength to be safe if _rows/_cols changed before this call (unlikely here but good practice)
+            for (int y = 0; y < _grid.GetLength(0); y++)
             {
-                _endLevelText.text = isWin ? "LEVEL COMPLETED!" : "TIME'S UP!";
+                for (int x = 0; x < _grid.GetLength(1); x++)
+                {
+                    if (_grid[y, x] != null)
+                    {
+                        _blockPool.Return(_grid[y, x]);
+                        _grid[y, x] = null;
+                    }
+                }
             }
         }
         
-        // Disable input or show particles, etc.
+        // Clear goals
+        if (_activeGoals != null)
+        {
+            foreach (var goal in _activeGoals) if (goal != null) Destroy(goal.gameObject);
+            _activeGoals.Clear();
+        }
+        
+        // Clear Undo History to prevent reverting to previous level/game state
+        if (_undoStack != null) _undoStack.Clear();
     }
+
+    private void StartLevel(int level)
+    {
+        _currentLevel = level;
+        if (_gameUI != null) _gameUI.UpdateLevelText(_currentLevel);
+        
+        // Difficulty Scaling Logic
+        // Base: 8x6, 3 Colors
+        // Increase Rows every 2 levels
+        // Increase Cols every 3 levels
+        // Increase Colors every 4 levels
+        
+        int r = Mathf.Min(12, 8 + (level - 1) / 2);
+        int c = Mathf.Min(9, 6 + (level - 1) / 3);
+        int k = Mathf.Min(6, 3 + (level - 1) / 4);
+        
+        // Thresholds scaling? Maybe slightly harder to get combos?
+        int thrA = 4;
+        int thrB = 7;
+        int thrC = 9;
+        
+        // Goals scaling
+        int goalsCount = Mathf.Min(k, 2 + (level / 5));
+        
+        // Revised Formula (Starts at 15-25 range for Level 1)
+        // Increases by roughly 2-3 per level.
+        int minTarget = 15 + ((level - 1) * 2); 
+        int maxTarget = 25 + ((level - 1) * 3);
+        
+        _goalsToGenerate = goalsCount;
+        _minGoalTarget = minTarget;
+        _maxGoalTarget = maxTarget;
+        
+        // Time Scaling
+        // Base 60s + 15s per level.
+        // Level 1: 60s
+        // Level 5: 120s
+        _levelDuration =20.0f + ((level - 1) * 15.0f);
+
+        Debug.Log($"Starting Level {level}: {r}x{c}, Colors: {k}, Time: {_levelDuration}s");
+        InitializeBoard(r, c, k, thrA, thrB, thrC);
+    }
+    
+    // Helper to reset visuals and counts
+    private void ResetPowerUps()
+    {
+        _extraTimeUsesCount = 3;
+        if (_extraTimeText != null) _extraTimeText.text = _extraTimeUsesCount.ToString();
+        if (_extraTimeButtonImage != null) { foreach(var g in _extraTimeButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>()) g.color = Color.white; }
+
+        _sortUsesCount = 3;
+        if (_sortText != null) _sortText.text = _sortUsesCount.ToString();
+        if (_sortButtonImage != null) { foreach(var g in _sortButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>()) g.color = Color.white; }
+
+        _undoUsesCount = 3;
+        if (_undoText != null) _undoText.text = _undoUsesCount.ToString();
+        if (_undoButtonImage != null) { foreach(var g in _undoButtonImage.GetComponentsInChildren<UnityEngine.UI.Graphic>()) g.color = Color.white; }
+    }
+
 
     public bool AddExtraTime(float seconds)
     {

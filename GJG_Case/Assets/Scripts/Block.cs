@@ -27,6 +27,8 @@ namespace Internal.Core
         /// <param name="col">Grid Column Index</param>
         /// <param name="colorId">Logical Color ID</param>
         /// <param name="sprite">Visual Sprite</param>
+        /// <param name="colorId">Logical Color ID</param>
+        /// <param name="sprite">Visual Sprite</param>
         public void Init(int row, int col, int colorId, Sprite sprite)
         {
             Row = row;
@@ -35,6 +37,8 @@ namespace Internal.Core
             _renderer.sprite = sprite;
             
             // Ensure proper name for debugging in the Hierarchy.
+            
+
             gameObject.name = $"Block_{row}_{col}";
             
             // Set Sorting Order based on Row to handle layering correctly.

@@ -32,6 +32,13 @@ public class GameUI : MonoBehaviour
     [SerializeField] private Button _openPanelButton;
     [SerializeField] private Button _closePanelButton;
 
+    [Header("Start Menu & HUD")]
+    [SerializeField] private GameObject _startMenuPanel;
+    [SerializeField] private Button _playButton;
+    [SerializeField] private Button _customGameButton; // New button
+    [SerializeField] private TextMeshProUGUI _levelText;
+    [SerializeField] private Button _returnToMenuButton; // On Game Over panel
+
     private void Start()
     {
         _updateButton.onClick.AddListener(OnRestartClicked);
@@ -60,12 +67,67 @@ public class GameUI : MonoBehaviour
         {
             canvas.sortingOrder = 1000;
         }
+
+        // Start Menu Logic
+        if (_playButton != null) _playButton.onClick.AddListener(OnPlayClicked);
+        if (_customGameButton != null) _customGameButton.onClick.AddListener(OnCustomGameClicked);
+        if (_returnToMenuButton != null) _returnToMenuButton.onClick.AddListener(OnReturnToMenuClicked);
+
+
+
+        // Define Start State
+        if (_startMenuPanel != null) _startMenuPanel.SetActive(true);
+        if (_inputPanel != null) _inputPanel.SetActive(false);
+        
+        // Initial visibility check
+        CheckOpenButtonVisibility();
+    }
+
+    private void OnPlayClicked()
+    {
+        if (_startMenuPanel != null) _startMenuPanel.SetActive(false);
+        _boardController.StartGame(); // Normal Mode
+        UpdateLevelText(1);
+        CheckOpenButtonVisibility();
+    }
+
+    private void OnCustomGameClicked()
+    {
+        if (_startMenuPanel != null) _startMenuPanel.SetActive(false);
+        // Start directly with default settings (Medium)
+        ApplyPreset(10, 8, 5, 4, 7, 9, true); 
+        
+        CheckOpenButtonVisibility();
+    }
+    
+    // Helper to control Open Panel button visibility
+    private void CheckOpenButtonVisibility()
+    {
+         bool isCustom = _boardController.IsCustomMode;
+         // Only show the Open Panel button in Custom Mode
+         if (_openPanelButton != null) 
+         {
+             _openPanelButton.gameObject.SetActive(isCustom);
+         }
+    }
+    
+    private void OnReturnToMenuClicked()
+    {
+        if (_startMenuPanel != null) _startMenuPanel.SetActive(true);
+        _boardController.ResetGame(); // Ensure game stops and resets
+    }
+
+    public void UpdateLevelText(int level)
+    {
+        if (_levelText != null) _levelText.text = $"LEVEL {level}";
     }
 
     private void SetPanelState(bool isOpen)
     {
         if (_inputPanel != null) _inputPanel.SetActive(isOpen);
-        if (_openPanelButton != null) _openPanelButton.gameObject.SetActive(!isOpen); // Hide open button when panel is open
+        
+        // Keep button visible but disable interaction if panel is open
+        if (_openPanelButton != null) _openPanelButton.interactable = !isOpen;
         if (_closePanelButton != null) _closePanelButton.gameObject.SetActive(isOpen); // Show close button only when panel is open
     }
 
@@ -98,7 +160,16 @@ public class GameUI : MonoBehaviour
             n = Mathf.Clamp(n, 2, 20);
             k = Mathf.Clamp(k, 1, 6);
             
+
+            
             _boardController.RestartBoard(m, n, k, a, b, c);
+            
+            // Close panel on successful start
+            SetPanelState(false);
+            UpdateLevelText(0); // 0 or "Custom"
+            if (_levelText != null) _levelText.text = "CUSTOM";
+            
+            CheckOpenButtonVisibility();
         }
         else
         {
