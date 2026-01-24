@@ -14,6 +14,8 @@ public class GameUI : MonoBehaviour
     [SerializeField] private TMP_InputField _inputA;
     [SerializeField] private TMP_InputField _inputB;
     [SerializeField] private TMP_InputField _inputC;
+    [SerializeField] private TMP_InputField _inputTime; // Duration
+    [SerializeField] private TMP_InputField _inputGoals; // Goals Count
     
     [SerializeField] private Button _updateButton;
 
@@ -122,13 +124,15 @@ public class GameUI : MonoBehaviour
         if (_levelText != null) _levelText.text = $"LEVEL {level}";
     }
 
-    private void SetPanelState(bool isOpen)
+   private void SetPanelState(bool isOpen)
     {
         if (_inputPanel != null) _inputPanel.SetActive(isOpen);
         
-        // Keep button visible but disable interaction if panel is open
+        // Panel açılınca buton etkileşimsiz olsun
         if (_openPanelButton != null) _openPanelButton.interactable = !isOpen;
-        if (_closePanelButton != null) _closePanelButton.gameObject.SetActive(isOpen); // Show close button only when panel is open
+        if (_closePanelButton != null) _closePanelButton.gameObject.SetActive(isOpen); 
+        // PAUSE: Panel açıksa zamanı durdur (0), kapalıysa devam et (1)
+        Time.timeScale = isOpen ? 0f : 1f;
     }
 
     private void ApplyPreset(int m, int n, int k, int a, int b, int c, bool autoRestart = true)
@@ -139,14 +143,18 @@ public class GameUI : MonoBehaviour
         _inputA.text = a.ToString();
         _inputB.text = b.ToString();
         _inputC.text = c.ToString();
-
+        
+        // Varsayılan değerler
+        if (_inputTime != null) _inputTime.text = "60"; 
+        if (_inputGoals != null) _inputGoals.text = Mathf.Min(k, 4).ToString();
         if (autoRestart)
         {
             OnRestartClicked();
         }
     }
 
-    private void OnRestartClicked()
+
+     private void OnRestartClicked()
     {
         if (int.TryParse(_inputM.text, out int m) &&
             int.TryParse(_inputN.text, out int n) &&
@@ -155,18 +163,30 @@ public class GameUI : MonoBehaviour
             int.TryParse(_inputB.text, out int b) &&
             int.TryParse(_inputC.text, out int c))
         {
-            // Validation - Increased max size for Hard mode
+            // Validasyon
             m = Mathf.Clamp(m, 2, 20);
             n = Mathf.Clamp(n, 2, 20);
             k = Mathf.Clamp(k, 1, 6);
             
-
+            // SÜRE OKUMA (Eklendi)
+            float duration = 60f;
+            if (_inputTime != null && float.TryParse(_inputTime.text, out float t))
+            {
+                duration = Mathf.Max(10f, t);
+            }
             
-            _boardController.RestartBoard(m, n, k, a, b, c);
+            // GOAL SAYISI OKUMA (Eklendi)
+            int goalLimit = 6;
+            if (_inputGoals != null && int.TryParse(_inputGoals.text, out int g))
+            {
+                goalLimit = Mathf.Clamp(g, 1, k);
+            }
+            // Yeni Parametrelerle Başlat
+            _boardController.RestartBoard(m, n, k, a, b, c, duration, goalLimit);
             
-            // Close panel on successful start
+            // Paneli kapat ve oyunu devam ettir (SetPanelState(false) içinde TimeScale 1 oluyor)
             SetPanelState(false);
-            UpdateLevelText(0); // 0 or "Custom"
+            UpdateLevelText(0); 
             if (_levelText != null) _levelText.text = "CUSTOM";
             
             CheckOpenButtonVisibility();

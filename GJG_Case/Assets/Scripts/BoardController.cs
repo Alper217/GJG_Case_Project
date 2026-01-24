@@ -120,12 +120,14 @@ public class BoardController : MonoBehaviour
     private Block[,] _grid; // Visual grid
     private List<Block> _searchBuffer = new List<Block>(100); // Reusable buffer
     private List<Block> _shuffleBuffer = new List<Block>(100); // Reusable buffer for shuffle
+    private bool[,] _visitedBuffer; // Reusable visited array for searches
     // We might need a separate logical grid if we want pure data separation, 
     // but for this scale, Block component holding data is acceptable if optimized.
     // Optimization: 'Block' is a MonoBehaviour.
    
     private void Start()
     {
+        Application.targetFrameRate = 60;
 
         // Don't auto-start. Wait for UI.
         // InitializeBoard(); 
@@ -143,12 +145,8 @@ public class BoardController : MonoBehaviour
 
     private void Update()
     {
-        // Input
-        if (_isGameActive && Input.GetMouseButtonDown(0))
-        {
-            HandleClick();
-        }
-
+        // Input is handled by BoardInputHandler calling OnInputAtPosition
+        
         if (_isGameActive)
         {
             _currentTime -= Time.deltaTime;
@@ -293,6 +291,7 @@ public class BoardController : MonoBehaviour
         }
 
         _grid = new Block[_rows, _cols];
+        _visitedBuffer = new bool[_rows, _cols];
         GenerateGrid();
         UpdateAllIcons();
 
@@ -354,17 +353,26 @@ public class BoardController : MonoBehaviour
         }
     }
     
-    public void RestartBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC)
+    public void RestartBoard(int rows, int cols, int colorCount, int thresholdA, int thresholdB, int thresholdC, float duration = 60f, int goalLimit = 6)
     {
         // This is effectively a "Custom Game" start.
         IsCustomMode = true;
         ResetPowerUps();
         _currentScore = 0; // Reset score too for custom game
+        
+        // Update Duration and Goals for Custom Mode
+        _levelDuration = duration;
+        
+        // Custom Game Goals Logic: Use user input
+        _goalsToGenerate = Mathf.Clamp(goalLimit, 1, colorCount);
+
         if (_scoreText != null) _scoreText.text = $"Score: {_currentScore}";
 
         // InitializeBoard now handles clearing, so we just call it.
         InitializeBoard(rows, cols, colorCount, thresholdA, thresholdB, thresholdC);
     }
+
+
 
     private void GenerateGrid()
     {
@@ -461,20 +469,31 @@ public class BoardController : MonoBehaviour
     {
         // We need to avoid re-calculating for same group multiple times.
         // Use a visited set.
-        bool[,] visited = new bool[_rows, _cols];
+        System.Array.Clear(_visitedBuffer, 0, _visitedBuffer.Length);
         
         for (int y = 0; y < _rows; y++)
         {
             for (int x = 0; x < _cols; x++)
             {
-                if (!visited[y, x] && _grid[y, x] != null)
+                if (!_visitedBuffer[y, x] && _grid[y, x] != null)
                 {
-                    Internal.Logic.MatchFinder.FindConnectedGroup(_grid[y, x], _grid, _rows, _cols, _searchBuffer);
+                    // Note: FindConnectedGroup needs a buffer to prevent infinite loops internally.
+                    // But here we want to find the group of _grid[y,x].
+                    // If we pass global _visitedBuffer, FindConnectedGroup will mark items as true.
+                    // Since we are iterating and want to skip processed items, this is DESIRABLE.
+                    // However, FindConnectedGroup logic might assume it starts fresh or just adds to it.
+                    // Our modified MatchFinder just checks `if (!visitedBuffer[ny, nx])` and sets true.
+                    // So if we pass the SAME buffer we are iterating on, it works perfectly to mark the whole group "visited".
+                    
+                    Internal.Logic.MatchFinder.FindConnectedGroup(_grid[y, x], _grid, _rows, _cols, _searchBuffer, _visitedBuffer);
                     int size = _searchBuffer.Count;
                     
                     foreach (var block in _searchBuffer)
                     {
-                        visited[block.Row, block.Col] = true;
+                        // visitedBuffer is already set by FindConnectedGroup for these blocks!
+                        // So we don't need to manually set it here, but no harm ensuring.
+                        // Wait, FindConnectedGroup sets visited for every added block.
+                        // So _visitedBuffer[block.Row, block.Col] is ALREADY true.
                         UpdateBlockIcon(block, size);
                     }
                 }
@@ -517,25 +536,10 @@ public class BoardController : MonoBehaviour
     // Input is now handled in the main Update loop above with Combo logic
     // private void Update() { ... } 
 
-    private void HandleClick()
+    public void OnInputAtPosition(Vector3 inputWorldPos)
     {
-        // Robust input for both Perspective (3D) and Orthographic (2D) cameras
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        Plane boardPlane = new Plane(Vector3.forward, Vector3.zero); // Plane at Z=0 facing -Z (back) -> Unity 2D default is XY plane
-        
-        float distance;
-        Vector3 mouseWorldPos;
+        if (!_isGameActive) return;
 
-        if (boardPlane.Raycast(ray, out distance))
-        {
-            mouseWorldPos = ray.GetPoint(distance);
-        }
-        else
-        {
-            // Fallback (mostly for pure 2D setups where ray might be parallel if malformed)
-             mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        }
-        
         // Convert world pos to grid index
         // Grid origin is calculated in GenerateGrid. 
         // We need to store origin or recalculate it.
@@ -548,8 +552,8 @@ public class BoardController : MonoBehaviour
         // pos - origin = (x * cell, y * cell)
         // (pos - origin).x / cell = x
         
-        float localX = mouseWorldPos.x - (origin.x - _cellSize / 2); // Adjust for center pivot of cell
-        float localY = mouseWorldPos.y - (origin.y - _cellSize / 2);
+        float localX = inputWorldPos.x - (origin.x - _cellSize / 2); // Adjust for center pivot of cell
+        float localY = inputWorldPos.y - (origin.y - _cellSize / 2);
 
         int gridX = Mathf.FloorToInt(localX / _cellSize);
         int gridY = Mathf.FloorToInt(localY / _cellSize);
@@ -559,17 +563,18 @@ public class BoardController : MonoBehaviour
             // Update Face Tracker
             if (_faceTracker != null)
             {
-                _faceTracker.SetLookTarget(mouseWorldPos);
+                _faceTracker.SetLookTarget(inputWorldPos);
             }
 
             Block clickedBlock = _grid[gridY, gridX];
             if (clickedBlock != null)
             {
-                Internal.Logic.MatchFinder.FindConnectedGroup(clickedBlock, _grid, _rows, _cols, _searchBuffer);
+                System.Array.Clear(_visitedBuffer, 0, _visitedBuffer.Length);
+                Internal.Logic.MatchFinder.FindConnectedGroup(clickedBlock, _grid, _rows, _cols, _searchBuffer, _visitedBuffer);
                 if (_searchBuffer.Count >= 2)
                 {
                     SaveState(); // Save before popping
-                    Debug.Log($"Found match of size {_searchBuffer.Count}");
+                    // Debug.Log($"Found match of size {_searchBuffer.Count}");
                     RemoveBlocks(_searchBuffer);
                 }
             }
@@ -602,7 +607,7 @@ public class BoardController : MonoBehaviour
 
         _currentScore += finalScore;
         _scoreText.text = $"Score: {_currentScore}";
-        Debug.Log($"Base: {scoreToAdd}, Mult: {multiplier:F1}, Added: {finalScore}, Total: {_currentScore}");
+        // Debug.Log($"Base: {scoreToAdd}, Mult: {multiplier:F1}, Added: {finalScore}, Total: {_currentScore}");
 
         // Juice: Screen Shake
         if (count >= _shakeThreshold && _cameraShake != null)
@@ -898,7 +903,11 @@ public class BoardController : MonoBehaviour
         int thrC = 9;
         
         // Goals scaling
-        int goalsCount = Mathf.Min(k, 2 + (level / 5));
+        // Allow up to K goals (2,3,4,5,6) as difficulty increases
+        int goalsCount = Mathf.Min(k, 2 + (level / 3)); 
+        // No hard cap at 4, strictly K limit.
+        
+        // Revised Formula (Starts at 15-25 range for Level 1)
         
         // Revised Formula (Starts at 15-25 range for Level 1)
         // Increases by roughly 2-3 per level.
@@ -913,7 +922,7 @@ public class BoardController : MonoBehaviour
         // Base 60s + 15s per level.
         // Level 1: 60s
         // Level 5: 120s
-        _levelDuration =20.0f + ((level - 1) * 15.0f);
+        _levelDuration =20.0f + ((level - 1) * 5.0f);
 
         Debug.Log($"Starting Level {level}: {r}x{c}, Colors: {k}, Time: {_levelDuration}s");
         InitializeBoard(r, c, k, thrA, thrB, thrC);
