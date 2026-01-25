@@ -41,21 +41,102 @@ public class GameUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI _levelText;
     [SerializeField] private Button _returnToMenuButton; // On Game Over panel
 
+    [Header("Audio Settings")]
+    [SerializeField] private Slider _musicSlider;
+    [SerializeField] private Button _musicMuteButton; // Should have an Image to change icon
+    [SerializeField] private Slider _sfxSlider;
+    [SerializeField] private Button _sfxMuteButton;
+
+    [Header("Settings Panel UI")]
+    [SerializeField] private GameObject _settingsPanel;
+    [SerializeField] private Button _openSettingsButton;
+    [SerializeField] private Button _closeSettingsButton;
+
+    [Header("Icons")]
+    [SerializeField] private Sprite _soundOnSprite;
+    [SerializeField] private Sprite _soundOffSprite;
+    [SerializeField] private Sprite _musicOnSprite;
+    [SerializeField] private Sprite _musicOffSprite;
+
+
     private void Start()
     {
-        _updateButton.onClick.AddListener(OnRestartClicked);
-        
-        if (_easyButton != null) _easyButton.onClick.AddListener(() => ApplyPreset(8, 6, 3, 3, 5, 7));
-        if (_mediumButton != null) _mediumButton.onClick.AddListener(() => ApplyPreset(10, 8, 5, 4, 7, 9));
-        if (_hardButton != null) _hardButton.onClick.AddListener(() => ApplyPreset(12, 9, 6, 5, 8, 10));
+        // Settings Panel Init
+        if (_openSettingsButton != null) _openSettingsButton.onClick.AddListener(() => { PlayClickSound(); SetSettingsPanelState(true); });
+        if (_closeSettingsButton != null) _closeSettingsButton.onClick.AddListener(() => { PlayClickSound(); SetSettingsPanelState(false); });
+        SetSettingsPanelState(false); // Default closed
 
-        if (_extraTimeButton != null) _extraTimeButton.onClick.AddListener(() => _boardController.AddExtraTime(10f));
-        if (_sortButton != null) _sortButton.onClick.AddListener(() => _boardController.SortBoardByColor());
-        if (_undoButton != null) _undoButton.onClick.AddListener(() => _boardController.UndoLastMove());
+        // Audio Settings Bindings
+        if (_musicSlider != null) 
+        {
+            _musicSlider.onValueChanged.AddListener((val) => 
+            {
+                if (AudioManager.Instance) AudioManager.Instance.SetMusicVolume(val);
+                
+                // MUSIC: Ses seviyesi 0 ise 'Off', >0 ise 'On' görselini ata
+                UpdateVolumeButtonVisual(_musicMuteButton, val, _musicOnSprite, _musicOffSprite);
+            });
+            // Init value
+            _musicSlider.value = 1f; 
+        }
+
+        if (_sfxSlider != null)
+        {
+             _sfxSlider.onValueChanged.AddListener((val) => 
+            {
+                if (AudioManager.Instance) AudioManager.Instance.SetSFXVolume(val);
+
+                // SFX: Tıklama sesleri için de aynısı; 0 ise ikon değişsin
+                UpdateVolumeButtonVisual(_sfxMuteButton, val, _soundOnSprite, _soundOffSprite);
+            });
+            _sfxSlider.value = 1f;
+        }
+
+        if (_musicMuteButton != null)
+        {
+            _musicMuteButton.onClick.AddListener(() => 
+            {
+                PlayClickSound();
+                if (AudioManager.Instance) 
+                {
+                    bool isMuted = AudioManager.Instance.ToggleMusicMute();
+                    UpdateMuteButtonVisual(_musicMuteButton, isMuted, _musicOnSprite, _musicOffSprite);
+                    
+                    // Mute tuşuna basınca slider değerini de görsel olarak sıfırlamak isteyebilirsiniz
+                    // ancak şimdilik sadece ikon değişimi istendiği için slidera dokunmuyoruz.
+                }
+            });
+            // Init Visual
+            if (AudioManager.Instance) UpdateMuteButtonVisual(_musicMuteButton, AudioManager.Instance.IsMusicMuted, _musicOnSprite, _musicOffSprite);
+        }
+
+        if (_sfxMuteButton != null)
+        {
+            _sfxMuteButton.onClick.AddListener(() => 
+            {
+                PlayClickSound();
+                if (AudioManager.Instance) 
+                {
+                    bool isMuted = AudioManager.Instance.ToggleSFXMute();
+                    UpdateMuteButtonVisual(_sfxMuteButton, isMuted, _soundOnSprite, _soundOffSprite);
+                }
+            });
+             // Init Visual
+            if (AudioManager.Instance) UpdateMuteButtonVisual(_sfxMuteButton, AudioManager.Instance.IsSFXMuted, _soundOnSprite, _soundOffSprite);
+        }
+        _updateButton.onClick.AddListener(() => { PlayClickSound(); OnRestartClicked(); });
+        
+        if (_easyButton != null) _easyButton.onClick.AddListener(() => { PlayClickSound(); ApplyPreset(8, 6, 3, 3, 5, 7); });
+        if (_mediumButton != null) _mediumButton.onClick.AddListener(() => { PlayClickSound(); ApplyPreset(10, 8, 5, 4, 7, 9); });
+        if (_hardButton != null) _hardButton.onClick.AddListener(() => { PlayClickSound(); ApplyPreset(12, 9, 6, 5, 8, 10); });
+
+        if (_extraTimeButton != null) _extraTimeButton.onClick.AddListener(() => { PlayClickSound(); _boardController.AddExtraTime(10f); });
+        if (_sortButton != null) _sortButton.onClick.AddListener(() => { PlayClickSound(); _boardController.SortBoardByColor(); });
+        if (_undoButton != null) _undoButton.onClick.AddListener(() => { PlayClickSound(); _boardController.UndoLastMove(); });
 
         // Panel Logic
-        if (_openPanelButton != null) _openPanelButton.onClick.AddListener(() => SetPanelState(true));
-        if (_closePanelButton != null) _closePanelButton.onClick.AddListener(() => SetPanelState(false));
+        if (_openPanelButton != null) _openPanelButton.onClick.AddListener(() => { PlayClickSound(); SetPanelState(true); });
+        if (_closePanelButton != null) _closePanelButton.onClick.AddListener(() => { PlayClickSound(); SetPanelState(false); });
 
         // Start with panel closed (optional, keeps UI clean)
         SetPanelState(false);
@@ -71,9 +152,9 @@ public class GameUI : MonoBehaviour
         }
 
         // Start Menu Logic
-        if (_playButton != null) _playButton.onClick.AddListener(OnPlayClicked);
-        if (_customGameButton != null) _customGameButton.onClick.AddListener(OnCustomGameClicked);
-        if (_returnToMenuButton != null) _returnToMenuButton.onClick.AddListener(OnReturnToMenuClicked);
+        if (_playButton != null) _playButton.onClick.AddListener(() => { PlayClickSound(); OnPlayClicked(); });
+        if (_customGameButton != null) _customGameButton.onClick.AddListener(() => { PlayClickSound(); OnCustomGameClicked(); });
+        if (_returnToMenuButton != null) _returnToMenuButton.onClick.AddListener(() => { PlayClickSound(); OnReturnToMenuClicked(); });
 
 
 
@@ -88,7 +169,11 @@ public class GameUI : MonoBehaviour
     private void OnPlayClicked()
     {
         if (_startMenuPanel != null) _startMenuPanel.SetActive(false);
+        CloseAllPanels(); // Ensure clean slate
         _boardController.StartGame(); // Normal Mode
+        
+        if (AudioManager.Instance) AudioManager.Instance.PlayGameMusic(); // Switch Music
+        
         UpdateLevelText(1);
         CheckOpenButtonVisibility();
     }
@@ -96,6 +181,10 @@ public class GameUI : MonoBehaviour
     private void OnCustomGameClicked()
     {
         if (_startMenuPanel != null) _startMenuPanel.SetActive(false);
+        CloseAllPanels(); // Ensure clean slate
+
+        if (AudioManager.Instance) AudioManager.Instance.PlayGameMusic(); // Switch Music
+        
         // Start directly with default settings (Medium)
         ApplyPreset(10, 8, 5, 4, 7, 9, true); 
         
@@ -116,7 +205,17 @@ public class GameUI : MonoBehaviour
     private void OnReturnToMenuClicked()
     {
         if (_startMenuPanel != null) _startMenuPanel.SetActive(true);
+        CloseAllPanels(); // Ensure clean slate
+
+        if (AudioManager.Instance) AudioManager.Instance.PlayMenuMusic(); // Back to Menu Music
+        
         _boardController.ResetGame(); // Ensure game stops and resets
+    }
+
+    private void CloseAllPanels()
+    {
+        SetPanelState(false);
+        SetSettingsPanelState(false);
     }
 
     public void UpdateLevelText(int level)
@@ -131,6 +230,12 @@ public class GameUI : MonoBehaviour
         // Panel açılınca buton etkileşimsiz olsun
         if (_openPanelButton != null) _openPanelButton.interactable = !isOpen;
         if (_closePanelButton != null) _closePanelButton.gameObject.SetActive(isOpen); 
+        // MUTUAL EXCLUSION: If opening Dev panel, close Settings panel
+        if (isOpen)
+        {
+            SetSettingsPanelState(false);
+        }
+
         // PAUSE: Panel açıksa zamanı durdur (0), kapalıysa devam et (1)
         Time.timeScale = isOpen ? 0f : 1f;
     }
@@ -194,6 +299,49 @@ public class GameUI : MonoBehaviour
         else
         {
             Debug.LogError("Invalid Input");
+        }
+    }
+
+    private void PlayClickSound()
+    {
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayButtonSound();
+        }
+    }
+
+    private void SetSettingsPanelState(bool isOpen)
+    {
+        if (_settingsPanel != null) _settingsPanel.SetActive(isOpen);
+        if (_openSettingsButton != null) _openSettingsButton.interactable = !isOpen; // Disable open button when open
+        
+        // AUTO-CLOSE Development Panel if Settings is opened
+        if (isOpen)
+        {
+            SetPanelState(false);
+        }
+        
+        // Optional: Pause time if you want settings to pause game
+        // Time.timeScale = isOpen ? 0f : 1f; 
+    }
+
+    private void UpdateMuteButtonVisual(Button btn, bool isMuted, Sprite onSprite, Sprite offSprite)
+    {
+        if (btn == null) return;
+        Image img = btn.GetComponent<Image>();
+        if (img != null)
+        {
+            img.sprite = isMuted ? offSprite : onSprite;
+        }
+    }
+
+    private void UpdateVolumeButtonVisual(Button btn, float volume, Sprite onSprite, Sprite offSprite)
+    {
+        if (btn == null) return;
+        Image img = btn.GetComponent<Image>();
+        if (img != null)
+        {
+            img.sprite = volume > 0 ? onSprite : offSprite;
         }
     }
 }

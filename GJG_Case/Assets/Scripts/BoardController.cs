@@ -613,6 +613,13 @@ public class BoardController : MonoBehaviour
         if (count >= _shakeThreshold && _cameraShake != null)
         {
             _cameraShake.Shake(_shakeDuration, _shakeMagnitude);
+            // Optional: Play a heavier sound for big combos?
+        }
+        
+        // Audio: Pop Sound
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayPopSound();
         }
         
         // Goals Upgrade
