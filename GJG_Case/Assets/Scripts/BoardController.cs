@@ -125,9 +125,14 @@ public class BoardController : MonoBehaviour
     // but for this scale, Block component holding data is acceptable if optimized.
     // Optimization: 'Block' is a MonoBehaviour.
    
+    private Camera _mainCamera;
+    private readonly WaitForSeconds _animDelay = new WaitForSeconds(0.4f);
+    private readonly WaitForSeconds _shuffleDelay = new WaitForSeconds(0.5f);
+
     private void Start()
     {
         Application.targetFrameRate = 60;
+        _mainCamera = Camera.main;
 
         // Don't auto-start. Wait for UI.
         // InitializeBoard(); 
@@ -136,10 +141,10 @@ public class BoardController : MonoBehaviour
         if (_gameUI == null) _gameUI = FindObjectOfType<GameUI>();
         
         // Auto-add text prefab if missing for testing (optional, but good for safety)
-        if (Camera.main != null)
+        if (_mainCamera != null)
         {
-             _cameraShake = Camera.main.GetComponent<Internal.Visuals.CameraShake>();
-             if (_cameraShake == null) _cameraShake = Camera.main.gameObject.AddComponent<Internal.Visuals.CameraShake>();
+             _cameraShake = _mainCamera.GetComponent<Internal.Visuals.CameraShake>();
+             if (_cameraShake == null) _cameraShake = _mainCamera.gameObject.AddComponent<Internal.Visuals.CameraShake>();
         }
     }
 
@@ -423,7 +428,8 @@ public class BoardController : MonoBehaviour
 
     private void AdjustCamera()
     {
-        Camera cam = Camera.main;
+        if (_mainCamera == null) _mainCamera = Camera.main;
+        Camera cam = _mainCamera;
         if (cam == null) return;
 
         float boardWidth = _cols * _cellSize;
@@ -710,7 +716,7 @@ public class BoardController : MonoBehaviour
             }
         }
         
-        yield return new WaitForSeconds(0.4f); // Animation delay placeholder
+        yield return _animDelay; // Animation delay placeholder
 
         // 2. Refill
         float width = _cols * _cellSize;
@@ -740,7 +746,7 @@ public class BoardController : MonoBehaviour
              if (!hasPowerUps)
              {
                  Debug.Log("Deadlock detected and no power-ups! Shuffling...");
-                 yield return new WaitForSeconds(0.5f);
+                 yield return _shuffleDelay;
                  
                  // Collect all blocks
                  _shuffleBuffer.Clear();
@@ -770,6 +776,8 @@ public class BoardController : MonoBehaviour
         return origin + new Vector3(x * _cellSize, y * _cellSize, 0);
     }
 
+    private int _lastSeconds = -1;
+
     private void UpdateTimerUI()
     {
         if (_timerText != null)
@@ -780,9 +788,15 @@ public class BoardController : MonoBehaviour
             // Format 00:00
             int minutes = Mathf.FloorToInt(displayTime / 60F);
             int seconds = Mathf.FloorToInt(displayTime % 60F);
-            _timerText.text = $"{minutes:00}:{seconds:00}";
+
+            // Optimization: Only update string if seconds changed
+            if (seconds != _lastSeconds)
+            {
+                _timerText.text = $"{minutes:00}:{seconds:00}";
+                _lastSeconds = seconds;
+            }
             
-            // Last 10 seconds warning
+            // Last 10 seconds warning (Scale effect still needs per-frame update, but text doesn't)
             if (displayTime <= 10f && displayTime > 0) 
             {
                 _timerText.color = Color.red;

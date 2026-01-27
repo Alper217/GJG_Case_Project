@@ -30,8 +30,6 @@ public class AudioManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
-        // Start with Menu Music if available
         PlayMenuMusic();
     }
 
@@ -58,6 +56,14 @@ public class AudioManager : MonoBehaviour
     public void PlaySFX(AudioClip clip)
     {
         if (clip == null) return;
+        _sfxSource.pitch = 1f; // Reset pitch
+        _sfxSource.PlayOneShot(clip);
+    }
+
+    public void PlaySFX(AudioClip clip, float pitchVariation)
+    {
+        if (clip == null) return;
+        _sfxSource.pitch = 1f + Random.Range(-pitchVariation, pitchVariation);
         _sfxSource.PlayOneShot(clip);
     }
 
@@ -68,7 +74,7 @@ public class AudioManager : MonoBehaviour
 
     public void PlayPopSound()
     {
-        PlaySFX(_popSound);
+        PlaySFX(_popSound, 0.1F);
     }
 
     // --- Volume Control ---
