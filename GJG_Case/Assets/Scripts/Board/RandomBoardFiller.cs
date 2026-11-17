@@ -126,6 +126,7 @@ public class RandomBoardFiller : MonoBehaviour
     private LayoutSignature _lastSignature;
     private bool _hasBuiltOnce;
     private int _sessionSeed;
+    private bool _drivenExternally;
 
     public BoardSizingMode SizingMode
     {
@@ -134,7 +135,26 @@ public class RandomBoardFiller : MonoBehaviour
     }
 
     public SpriteRenderer FrameRenderer => _frameRenderer;
+    public Vector2 OpaqueContentRatio => _opaqueContentRatio;
+    public Sprite[] BlockSprites => _blockSprites;
     public bool HasSpawnedTiles => _spawnedTiles.Count > 0 || transform.Find(ContainerName) != null;
+
+    public struct ResolvedBoardGeometry
+    {
+        public Vector3 Center;
+        public Vector3 Right;
+        public Vector3 Up;
+        public Quaternion Rotation;
+        public float BlockW;
+        public float BlockH;
+        public float StepX;
+        public float StepY;
+        public float TotalW;
+        public float TotalH;
+        public RowStackOrder RowStackOrder;
+        public string SortingLayerName;
+        public int BaseSortingOrder;
+    }
 
     public struct BoardMetrics
     {
@@ -223,7 +243,7 @@ public class RandomBoardFiller : MonoBehaviour
 
     private void Start()
     {
-        if (Application.isPlaying)
+        if (Application.isPlaying && !_drivenExternally)
         {
             RebuildGrid(logSummary: true);
         }
@@ -231,7 +251,7 @@ public class RandomBoardFiller : MonoBehaviour
 
     private void Update()
     {
-        if (!Application.isPlaying || !_autoRebuildInPlayMode)
+        if (!Application.isPlaying || !_autoRebuildInPlayMode || _drivenExternally)
         {
             return;
         }
@@ -301,6 +321,69 @@ public class RandomBoardFiller : MonoBehaviour
 
         _spawnedTiles.Clear();
         _hasBuiltOnce = false;
+    }
+
+    /// <summary>
+    /// Allows a gameplay BoardController to take ownership of the play area at runtime
+    /// while reusing the exact configured frame-expansion and Jenga geometry settings.
+    /// </summary>
+    public void SetDrivenExternally(bool external)
+    {
+        _drivenExternally = external;
+        if (external)
+        {
+            ClearGrid();
+        }
+    }
+
+    public Vector2 ComputeEffectiveSpriteUnitSize(Sprite sprite)
+    {
+        return GetEffectiveSpriteUnitSize(sprite);
+    }
+
+    public bool ResolveGeometryForBoard(
+        int rows,
+        int cols,
+        Sprite sampleSprite,
+        bool applyFrameResize,
+        out ResolvedBoardGeometry geometry)
+    {
+        ResolveAutoReferences();
+        _rows = Mathf.Clamp(rows, 1, 30);
+        _cols = Mathf.Clamp(cols, 1, 30);
+
+        if (!TryResolveBoardGeometry(
+            applyFrameResize,
+            sampleSprite,
+            out Vector3 center,
+            out Vector3 right,
+            out Vector3 up,
+            out Quaternion rotation,
+            out GridLayout layout,
+            out _,
+            out _))
+        {
+            geometry = default;
+            return false;
+        }
+
+        geometry = new ResolvedBoardGeometry
+        {
+            Center = center,
+            Right = right,
+            Up = up,
+            Rotation = rotation,
+            BlockW = layout.BlockW,
+            BlockH = layout.BlockH,
+            StepX = layout.StepX,
+            StepY = layout.StepY,
+            TotalW = layout.TotalW,
+            TotalH = layout.TotalH,
+            RowStackOrder = _rowStackOrder,
+            SortingLayerName = _sortingLayerName,
+            BaseSortingOrder = _baseSortingOrder
+        };
+        return true;
     }
 
     /// <summary>
